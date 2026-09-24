@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -59,4 +62,51 @@ class RiskDecision(BaseModel):
     decision: str = Field(..., pattern="^(release|hold|recall|destroy)$")
     reason: str = Field(..., min_length=1, max_length=300)
     operator: str = Field(..., min_length=1, max_length=80)
+
+
+class TraceAmount(BaseModel):
+    lot_code: str = Field(..., min_length=3, max_length=64)
+    quantity_kg: float = Field(..., gt=0, le=1000000)
+
+    @field_validator("lot_code")
+    @classmethod
+    def normalize_lot_code(cls, value: str) -> str:
+        return value.strip().upper()
+
+
+class TraceOutput(TraceAmount):
+    trace_code: str | None = Field(default=None, min_length=4, max_length=120)
+
+    @field_validator("trace_code")
+    @classmethod
+    def normalize_trace_code(cls, value: str | None) -> str | None:
+        return value.strip().upper() if value else value
+
+
+class TraceCredential(BaseModel):
+    credential_type: str = Field(..., min_length=1, max_length=40)
+    credential_no: str = Field(..., min_length=1, max_length=80)
+    issuer: str = Field(..., min_length=1, max_length=120)
+    issued_at: str = Field(default="", max_length=40)
+
+
+class TraceEventCreate(BaseModel):
+    event_code: str = Field(..., min_length=4, max_length=80)
+    event_type: Literal["register", "split", "merge", "transfer", "consume", "revoke"]
+    occurred_at: datetime
+    actor: str = Field(..., min_length=1, max_length=80)
+    from_node: str = Field(default="", max_length=160)
+    to_node: str = Field(default="", max_length=160)
+    reason: str = Field(default="", max_length=300)
+    target_event_code: str | None = Field(default=None, min_length=4, max_length=80)
+    inputs: list[TraceAmount] = Field(default_factory=list)
+    outputs: list[TraceOutput] = Field(default_factory=list)
+    credentials: list[TraceCredential] = Field(default_factory=list)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("occurred_at 必须携带时区信息")
+        return value
 
